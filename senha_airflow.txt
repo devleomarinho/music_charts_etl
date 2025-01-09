@@ -1,6 +1,0 @@
-docker exec -it airflow cat standalone_admin_password.txt
-
-v94VUdnMqcDZry2H
-
-comando pra mexer no mariadb no terminal:
-docker exec -it mariadb-data mariadb -u root -p
