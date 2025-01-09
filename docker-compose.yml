@@ -1,0 +1,120 @@
+services:
+
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb-data
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=albums
+      - MYSQL_USER=docker
+      - MYSQL_PASSWORD=docker
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+      image: minio/minio
+      container_name: minio
+      environment:
+        MINIO_ACCESS_KEY: minioadmin
+        MINIO_SECRET_KEY: minio@1234!
+      ports:
+        - "9000:9000"
+        - "9001:9001"
+      command: server /data --console-address ":9001"
+      volumes:
+        - minio_data:/data
+   
+  minio_mc:
+      image: minio/mc
+      container_name: minio_mc
+      depends_on:
+        - minio
+      entrypoint: |
+        sh -c "
+        sleep 10 &&
+        mc alias set myminio http://minio:9000 minioadmin minio@1234! &&
+        mc mb myminio/landing
+        "
+
+  postgres-airflow:
+    image: postgres:15
+    container_name: postgres-airflow
+    environment:
+      POSTGRES_USER: post_airflow
+      POSTGRES_PASSWORD: airflow_123
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  
+  airflow:
+    build:
+      context: .
+      dockerfile: airflow/config_airflow/airflow.Dockerfile
+    container_name: airflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://post_airflow:airflow_123@postgres-airflow:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOGGING_LEVEL: INFO
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minio@1234!
+    depends_on:
+      - postgres-airflow
+      - mariadb
+      - minio
+    ports:
+      - "8080:8080" 
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/config_airflow:/opt/airflow/config_airflow
+  
+    command: ['airflow', 'standalone']
+
+  # metabase:
+  #   image: metabase/metabase:v0.47.1
+  #   container_name: metabase
+  #   environment:
+  #     - MB_DB_TYPE=postgres
+  #     - MB_DB_DBNAME=metabase
+  #     - MB_DB_PORT=5432
+  #     - MB_DB_USER=metabase
+  #     - MB_DB_PASS=metabase_password
+  #     - MB_DB_HOST=postgres-metabase
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - postgres-metabase
+  #   volumes:
+  #     - metabase_data:/metabase-data
+
+  # postgres-metabase:
+  #   image: postgres:15
+  #   container_name: postgres-metabase
+  #   environment:
+  #     POSTGRES_DB: metabase
+  #     POSTGRES_USER: metabase
+  #     POSTGRES_PASSWORD: metabase_password
+  #   ports:
+  #     - "5434:5434"
+  #   volumes:
+  #     - postgres_metabase_data:/var/lib/postgresql/data
+
+
+
+
+volumes:
+  postgres_data:
+  minio_data:
+  mariadb_data:
