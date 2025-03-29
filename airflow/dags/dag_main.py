@@ -4,6 +4,7 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 from tasks.task_bronze_layer import process_landing
 from tasks.task_silver_layer import bronze_to_silver
+from tasks.task_gold_layer import silver_to_gold
 
 
 default_args = {
@@ -52,7 +53,19 @@ def main_dag():
             ]
         )
 
+    with TaskGroup("group_task_gold", tooltip="Tasks processadas de silver para gold layer") as group_task_gold:
+        PythonOperator(
+            task_id='task_gold',
+            python_callable=silver_to_gold,
+            op_args=[
+                endpoint_url,
+                aws_access_key_id, 
+                aws_secret_access_key,
+                bucket_name
+            ]
+        )
+
     
-    group_task_bronze >> group_task_silver
+    group_task_bronze >> group_task_silver >> group_task_gold
 
 main_dag_instance = main_dag()
