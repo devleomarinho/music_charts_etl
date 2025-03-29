@@ -3,6 +3,9 @@
 ## 📊 Sobre o Projeto
 Projeto de Engenharia de Dados que consiste em criar um pipeline de ETL, desenvolvido para coletar e processar dados históricos das paradas musicais mundiais desde 1950. O projeto realiza web scraping do site The World's Music Charts, processando informações de mais de 500 mil entradas de charts musicais de 22 países diferentes.
 
+![diagrama](https://github.com/user-attachments/assets/dc561dc1-ddc8-4aeb-a999-f544a4f39480)
+
+
 ## 🏗️ Arquitetura
 
 O projeto está estruturado em duas camadas principais:
@@ -18,6 +21,11 @@ O projeto está estruturado em duas camadas principais:
 - Armazenamento em formato Parquet no MinIO
 - Persistência na tabela 'albums_silver' no MariaDB
 
+### Layer Gold
+- Criação das tabelas dimensão;
+- Criação da tabela fato relacionada às entradas nas paradas de sucesso;
+- Enriquecimento com um novo scraping para criação da tabela dimensão com informações sobre cada parada;
+  
 ## 🛠️ Tecnologias Utilizadas
 
 - **Docker**: Containerização do ambiente
