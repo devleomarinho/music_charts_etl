@@ -3,7 +3,9 @@
 ## 📊 Sobre o Projeto
 Projeto de Engenharia de Dados que consiste em criar um pipeline de ETL, desenvolvido para coletar e processar dados históricos das paradas musicais mundiais desde 1950. O projeto realiza web scraping do site The World's Music Charts, processando informações de mais de 500 mil entradas de charts musicais de 22 países diferentes.
 
-![diagrama](https://github.com/user-attachments/assets/dc561dc1-ddc8-4aeb-a999-f544a4f39480)
+
+![diagrama2](https://github.com/user-attachments/assets/07e6eefd-d6ca-46f7-9e2c-a1bedf255cf7)
+
 
 
 ## 🏗️ Arquitetura
@@ -34,6 +36,7 @@ O projeto está estruturado em duas camadas principais:
 - **MariaDB**: Banco de dados relacional
 - **Python**: Linguagem principal para ETL
 - **DBeaver**: Interface para gestão do banco de dados
+- **Apache Superset**: Ferramenta de data viz utilizada para gerar dashboards a partir da camada gold
 
 ## 📈 Dataset
 
@@ -61,6 +64,16 @@ docker-compose up -d
 http://localhost:8080
 ```
 
+4. Acesse a interface do MinIO:
+```bash
+http://localhost:9001/
+```
+
+5. Acesse a interface do Apache Superset:
+```bash
+http://localhost:8088/
+```
+
 ## Melhorias futuras
 
-Este projeto está em desenvolvimento, portanto ainda irei adicionar um outra camada, a GOLD, com novas transformações e preparando-a para criação de análises usando ferramentas de visualização como Apache Superset, Metabase ou Power BI.
+Este projeto está funcionando, todas as imagens estão sendo criadas corretamente no docker compose, o script de webscraping está funcionando e as tasks do airflow estão rodando, as camadas bronze, silver e gold estão sendo criadas também. Está faltando apenas a criação dos dashboards no Apache Superset, então fique à vontade para criar as suas próprias análises!
