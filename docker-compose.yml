@@ -82,40 +82,42 @@ services:
   
     command: ['airflow', 'standalone']
 
-  metabase:
-    image: metabase/metabase:v0.47.1
-    container_name: metabase
-    environment:
-      - MB_DB_TYPE=postgres
-      - MB_DB_DBNAME=metabase
-      - MB_DB_PORT=5432
-      - MB_DB_USER=metabase
-      - MB_DB_PASS=metabase_password
-      - MB_DB_HOST=postgres-metabase
-    ports:
-      - "3000:3000"
-    depends_on:
-      - postgres-metabase
-    volumes:
-      - metabase_data:/metabase-data
-
-  postgres-metabase:
+  postgres-superset:
     image: postgres:15
-    container_name: postgres-metabase
+    container_name: postgres-superset
     environment:
-      POSTGRES_DB: metabase
-      POSTGRES_USER: metabase
-      POSTGRES_PASSWORD: metabase_password
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: superset
     ports:
-      - "5433:5433"
+      - "5433:5432"  # Alterando a porta externa para evitar conflito
     volumes:
-      - postgres_metabase_data:/var/lib/postgresql/data
+      - superset_pgdata:/var/lib/postgresql/data
 
-
+ 
+  superset:
+    build: 
+      context: ./superset
+      dockerfile: superset.Dockerfile
+    container_name: superset
+    ports:
+      - 8088:8088
+    environment:
+      ADMIN_USERNAME: admin
+      ADMIN_FIRSTNAME: Admin
+      ADMIN_LASTNAME: User
+      ADMIN_EMAIL: admin@superset.com
+      ADMIN_PASSWORD: admin123
+      SUPERSET_SECRET_KEY: mysecretkey
+      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://admin:admin@postgres-superset:5432/superset
+    depends_on:
+      - postgres-superset
+    volumes:
+      - superset_home:/app/superset_home
 
 volumes:
   postgres_data:
   minio_data:
   mariadb_data:
-  metabase_data:
-  postgres_metabase_data:
+  superset_pgdata:
+  superset_home:

@@ -35,6 +35,8 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
         response = minio_client.get_object(Bucket=bucket_name, Key=key)
         buffer = io.BytesIO(response['Body'].read())
         df = pd.read_parquet(buffer)
+        
+        
 
         def create_dim_artist(df):
             
@@ -44,22 +46,41 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
                 'nome_artista': artistas
             })
             
-            
+            # Adicionando ID como chave primária
             dim_artista['artista_id'] = range(1, len(dim_artista) + 1)
+            
+            # Reordenando colunas para ter o ID como primeira coluna
+            dim_artista = dim_artista[['artista_id', 'nome_artista']]
+            
             return dim_artista
 
-        def create_dim_album(df):
+        def create_dim_album(df, dim_artista):
             
             albums = df[['Album', 'Artista', 'Ano']].drop_duplicates()
             
+            # Criando o DataFrame base
             dim_album = pd.DataFrame({
                 'nome_album': albums['Album'],
                 'artista': albums['Artista'],
                 'ano_lancamento': albums['Ano']
             })
             
-            
+            # Gerando o album_id como chave primária
             dim_album['album_id'] = range(1, len(dim_album) + 1)
+            
+            # Adicionando referência para artista_id
+            dim_album = pd.merge(
+                dim_album, 
+                dim_artista[['artista_id', 'nome_artista']], 
+                left_on='artista', 
+                right_on='nome_artista', 
+                how='left'
+            )
+            
+            # Removendo a coluna duplicada e reorganizando
+            dim_album = dim_album.drop('nome_artista', axis=1)
+            dim_album = dim_album[['album_id', 'nome_album', 'artista_id', 'artista', 'ano_lancamento']]
+            
             return dim_album
 
         def create_dim_parada(df):
@@ -70,9 +91,52 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
                 'entrada_parada': paradas
             })
             
-            
+            # Adicionando ID como chave primária
             dim_parada['parada_id'] = range(1, len(dim_parada) + 1)
+            
+            # Reordenando para ter o ID como primeira coluna
+            dim_parada = dim_parada[['parada_id', 'entrada_parada']]
+            
             return dim_parada
+
+        def create_fact_album_parada(df, dim_album, dim_parada):
+            # Criando tabela fato que relaciona albuns com suas entradas nas paradas
+            
+            # Preparando os dados com as colunas originais relevantes
+            fact_data = df[['Album', 'Artista', 'Entrada_Parada', 'Posicao']].copy()
+            
+            # Juntando com dim_album para obter album_id
+            fact_data = pd.merge(
+                fact_data,
+                dim_album[['album_id', 'nome_album', 'artista']],
+                left_on=['Album', 'Artista'],
+                right_on=['nome_album', 'artista'],
+                how='left'
+            )
+            
+            # Juntando com dim_parada para obter parada_id
+            fact_data = pd.merge(
+                fact_data,
+                dim_parada[['parada_id', 'entrada_parada']],
+                left_on='Entrada_Parada',
+                right_on='entrada_parada',
+                how='left'
+            )
+            
+            # Criando a tabela fato final
+            fact_album_parada = pd.DataFrame({
+                'album_id': fact_data['album_id'],
+                'parada_id': fact_data['parada_id'],
+                'posicao': fact_data['Posicao']
+            })
+            
+            # Adicionando um ID único para a tabela fato
+            fact_album_parada['fact_id'] = range(1, len(fact_album_parada) + 1)
+            
+            # Reordenando colunas
+            fact_album_parada = fact_album_parada[['fact_id', 'album_id', 'parada_id', 'posicao']]
+            
+            return fact_album_parada
 
         def get_charts_data():
            
@@ -135,7 +199,14 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
                 logging.error(f"Erro ao fazer web scraping: {e}")
                 raise
 
+            # Adicionando chart_id para tabela de paradas
             df_charts = pd.DataFrame(all_data)
+            df_charts['chart_id'] = range(1, len(df_charts) + 1)
+            
+            # Reordenando para ter o ID como primeira coluna
+            cols = ['chart_id'] + [col for col in df_charts.columns if col != 'chart_id']
+            df_charts = df_charts[cols]
+            
             return df_charts
 
         def save_to_minio(df, prefix, minio_client, bucket_name):
@@ -158,10 +229,15 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
             connection = mysql_hook.get_conn()
 
             with connection.cursor() as cursor:
+                # Verificar se a tabela existe e excluir para recriar com as novas estruturas
+                cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 
+                # Definir tipos de colunas
                 create_columns = []
                 for column in df.columns:
-                    if 'int' in str(df[column].dtype):
+                    if column.endswith('_id'):
+                        col_type = 'INT'
+                    elif 'int' in str(df[column].dtype):
                         col_type = 'INT'
                     elif 'float' in str(df[column].dtype):
                         col_type = 'FLOAT'
@@ -170,16 +246,29 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
                     
                     create_columns.append(f"{column} {col_type}")
                 
+                # Adicionar chave primária para tabelas dimensionais
+                primary_key = ""
+                if table_name == 'dim_artista':
+                    primary_key = ", PRIMARY KEY (artista_id)"
+                elif table_name == 'dim_album':
+                    primary_key = ", PRIMARY KEY (album_id)"
+                elif table_name == 'dim_parada':
+                    primary_key = ", PRIMARY KEY (parada_id)"
+                elif table_name == 'charts_data':
+                    primary_key = ", PRIMARY KEY (chart_id)"
+                elif table_name == 'fact_album_parada':
+                    primary_key = ", PRIMARY KEY (fact_id)"
                 
+                # Criar a tabela
                 create_table_sql = f"""
                 CREATE TABLE IF NOT EXISTS {table_name} (
-                    {', '.join(create_columns)}
+                    {', '.join(create_columns)}{primary_key}
                 )
                 """
                 cursor.execute(create_table_sql)
                 logging.info(f"Tabela {table_name} criada/verificada com sucesso.")
 
-                
+                # Inserir dados
                 placeholders = ', '.join(['%s'] * len(df.columns))
                 columns = ', '.join(df.columns)
                 insert_sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
@@ -190,23 +279,28 @@ def silver_to_gold(endpoint_url, aws_access_key_id, aws_secret_access_key, bucke
                 connection.commit()
                 logging.info(f"Dados inseridos na tabela {table_name}.")
 
-        
+        # Criar as tabelas dimensionais na ordem correta
         dim_artista = create_dim_artist(df)
-        dim_album = create_dim_album(df)
         dim_parada = create_dim_parada(df)
+        dim_album = create_dim_album(df, dim_artista)
         df_charts = get_charts_data()
         
+        # Criar a tabela fato que relaciona as dimensões
+        fact_album_parada = create_fact_album_parada(df, dim_album, dim_parada)
         
+        # Salvar no MinIO
         save_to_minio(dim_artista, 'dim_artista', minio_client, bucket_name)
         save_to_minio(dim_album, 'dim_album', minio_client, bucket_name)
         save_to_minio(dim_parada, 'dim_parada', minio_client, bucket_name)
         save_to_minio(df_charts, 'charts_data', minio_client, bucket_name)
+        save_to_minio(fact_album_parada, 'fact_album_parada', minio_client, bucket_name)
         
-        
+        # Salvar no MariaDB
         save_to_mariadb(dim_artista, 'dim_artista')
         save_to_mariadb(dim_album, 'dim_album')
         save_to_mariadb(dim_parada, 'dim_parada')
         save_to_mariadb(df_charts, 'charts_data')
+        save_to_mariadb(fact_album_parada, 'fact_album_parada')
         
         logging.info("Camada Gold criada com sucesso!")
         

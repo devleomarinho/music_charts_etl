@@ -71,12 +71,13 @@ def upload_to_minio(df):
     bucket_name = "landing"
     object_name = f"bronze_albums_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
 
-   
+    # Converter DataFrame para bytes no formato parquet
     table = pa.Table.from_pandas(df)
     buf = io.BytesIO()
     pq.write_table(table, buf)
     buf.seek(0)
 
+    # Configuração do cliente S3 com nova configuração
     config = Config(
         signature_version='s3v4',
         s3={'addressing_style': 'path'},
@@ -109,7 +110,7 @@ def upload_to_minio(df):
 
 
 def upload_to_mariadb(df):
-    
+    # Normalizar nomes das colunas (remover acentos e caracteres especiais)
     df.columns = [col.replace(' ', '_').replace('á', 'a').replace('ã', 'a') for col in df.columns]
     
     print("Colunas normalizadas:")
@@ -133,7 +134,7 @@ def upload_to_mariadb(df):
             cursor.execute(create_table_sql)
             print(f"\nTabela {table_name} verificada/criada no MariaDB")
 
-            
+            # Inserir dados linha por linha
             for index, row in df.iterrows():
                 values = [str(val) if val is not None else '' for val in row]
                 

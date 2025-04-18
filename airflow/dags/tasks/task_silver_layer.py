@@ -33,7 +33,7 @@ def bronze_to_silver(endpoint_url, aws_access_key_id, aws_secret_access_key, buc
         if 'Contents' not in objects :
             raise Exception(f"Nenhum arquivo encontrado no bucket {bucket_name}")
             
-       
+        # Pegar o arquivo mais recente
         latest_file = max(objects['Contents'], key=lambda x: x['LastModified'])
         key = latest_file['Key']
         
@@ -43,20 +43,20 @@ def bronze_to_silver(endpoint_url, aws_access_key_id, aws_secret_access_key, buc
         buffer = io.BytesIO(response['Body'].read())
         df = pd.read_parquet(buffer)
 
-       
+        #fazer a transformação da coluna Entradas nas Paradas
         df['Entradas nas Paradas'] = df['Entradas nas Paradas'].str.strip()
         
         entradas_split = df['Entradas nas Paradas'].str.split(',', expand=True)
         df_long = entradas_split.melt(ignore_index=False, value_name='Entrada_Parada').dropna()
 
-      
+        # Resetar o índice e manter a referência ao índice original
         df_long.reset_index(inplace=True)
 
         df_normalizado = pd.merge(df[['Posição', 'Artista', 'Álbum', 'Ano']].reset_index(), df_long, on='index').drop(columns=['index'])
-        
+        # Remover duplicatas usando as colunas relevantes
         df_normalizado = df_normalizado.drop_duplicates(subset=['Artista', 'Álbum', 'Ano', 'Entrada_Parada'])
 
-        
+        # Remover a coluna variable
         df_normalizado.drop(columns=['variable'], inplace=True)
 
         df_normalizado = df_normalizado.rename(columns={
@@ -109,7 +109,7 @@ def bronze_to_silver(endpoint_url, aws_access_key_id, aws_secret_access_key, buc
                 cursor.execute(create_table_sql)
                 logging.info(f"Tabela {table_name} criada/verificada com sucesso.")
 
-               
+                # Preparar a inserção dos dados
                 placeholders = ', '.join(['%s'] * len(df.columns))
                 columns = ', '.join(df.columns)
                 
